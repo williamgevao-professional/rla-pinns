@@ -3,6 +3,13 @@ method: grid
 metric:
   name: l2_error
   goal: minimize
+command:
+  - ${env}
+  - python
+  - ${program}
+  - "--wandb"
+  - "--wandb_project=deep-hedging-optim"
+  - ${args}
 parameters:
   optimizer:
     value: RNGD
@@ -18,8 +25,6 @@ parameters:
     value: float64
   num_seconds:
     value: 300
-  wandb:
-    value: true
   RNGD_approximation:
     value: exact
   RNGD_damping:
