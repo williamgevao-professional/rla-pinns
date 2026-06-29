@@ -1,0 +1,26 @@
+program: rla_pinns/train.py
+method: grid
+metric:
+  name: l2_error
+  goal: minimize
+parameters:
+  optimizer:
+    value: HessianFree
+  equation:
+    value: black-scholes-logS
+  boundary_condition:
+    value: call_payoff
+  dim_Omega:
+    value: 1
+  model:
+    value: mlp-tanh-64
+  dtype:
+    value: float64
+  num_seconds:
+    value: 300
+  wandb:
+    value: true
+  HessianFree_damping:
+    values: [0.1, 1.0, 10.0]
+  HessianFree_cg_max_iter:
+    values: [50, 250]
