@@ -166,4 +166,7 @@ wandb/
 
 checkpoints/
 .DS_Store
-*.eggs
+*.eggswandb/
+__pycache__/
+.venv/
+checkpoints/
