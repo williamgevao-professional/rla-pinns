@@ -13,6 +13,7 @@ from rla_pinns import (
     heat_equation,
     log_fokker_planck_isotropic_equation,
     poisson_equation,
+    black_scholes_equation,
 )
 from rla_pinns.gramian_utils import autograd_gramian
 from rla_pinns.optim.line_search import (
@@ -119,6 +120,7 @@ class ENGD(Optimizer):
         "heat",
         "fokker-planck-isotropic",
         "log-fokker-planck-isotropic",
+        "black-scholes"
     }
     LOSS_EVALUATORS: Dict[str, Dict[str, Callable]] = {
         "interior": {
@@ -126,12 +128,14 @@ class ENGD(Optimizer):
             "heat": heat_equation.evaluate_interior_loss,
             "fokker-planck-isotropic": fokker_planck_isotropic_equation.evaluate_interior_loss,  # noqa: B950
             "log-fokker-planck-isotropic": log_fokker_planck_isotropic_equation.evaluate_interior_loss,  # noqa: B950
+            "black-scholes": black_scholes_equation.evaluate_interior_loss,
         },
         "boundary": {
             "poisson": evaluate_boundary_loss,
             "heat": evaluate_boundary_loss,
             "fokker-planck-isotropic": evaluate_boundary_loss,
             "log-fokker-planck-isotropic": evaluate_boundary_loss,
+            "black-scholes": evaluate_boundary_loss,
         },
     }
 

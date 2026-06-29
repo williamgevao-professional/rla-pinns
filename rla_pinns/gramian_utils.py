@@ -81,6 +81,29 @@ def autograd_gram_grads(
         """
         hess_f = hessian(f, argnums=0)  # (x, θ) → ∇²ₓf(x, θ)
         return einsum(hess_f(x, *params), "d d ->")
+    
+    def black_scholes_pde_operator(x, *params):
+        """Evaluate the Black-Scholes differential operator on an un-batched input.
+    
+        Returns the scalar  V_t + 0.5 * sigma^2 * S^2 * V_SS  at the point x = [t, S].
+        """
+        from rla_pinns.black_scholes_equation import SIGMA
+    
+        hess_f = hessian(f, argnums=0)        # (x, θ) → ∇²_{(t,S)} f
+        jacobian_f = jacrev(f, argnums=0)     # (x, θ) → ∇_{(t,S)} f
+    
+        # spatial Hessian: strip the time row & column (index 0), keep the S-block.
+        # With one spatial coordinate this is 1x1; its trace is V_SS.
+        hess = hess_f(x, *params)[1:][:, 1:]
+        V_SS = einsum(hess, "d d ->")
+    
+        # time derivative V_t is the 0-th entry of the (t, S) Jacobian.
+        V_t = jacobian_f(x, *params)[0]
+    
+        # price S is the 1-th input coordinate.
+        S = x[1]
+    
+        return V_t + 0.5 * SIGMA**2 * S**2 * V_SS
 
     def heat_pde_operator(x: Tensor, *params: Parameter) -> Tensor:
         """Evaluate the heat equation's differential operator on an un-batched input.
@@ -206,6 +229,8 @@ def autograd_gram_grads(
         "heat_boundary": f,
         "fokker-planck-isotropic_boundary": f,
         "log-fokker-planck-isotropic_boundary": f,
+        "black-scholes_interior": black_scholes_pde_operator,
+        "black-scholes_boundary": f,
     }[loss_type]
     argnums = tuple(range(1, len(param_names) + 1))
 

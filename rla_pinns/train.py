@@ -34,12 +34,16 @@ from torch import (
 from torch.nn import Linear, Module, Sequential, Tanh
 from torch.optim import LBFGS
 
+
 from rla_pinns import (
+    black_scholes_equation,
+    black_scholes_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
     poisson_equation,
-)
+    )
+
 from rla_pinns.optim import set_up_optimizer
 from rla_pinns.optim.engd import ENGD
 from rla_pinns.optim.hessianfree_cached import HessianFreeCached
@@ -70,7 +74,9 @@ SUPPORTED_EQUATIONS = {
     "heat",
     "fokker-planck-isotropic",
     "log-fokker-planck-isotropic",
-}
+    "black-scholes",
+    "black-scholes-logS",
+    }
 SUPPORTED_MODELS = {
     "mlp-tanh-64",
     "mlp-tanh-64-48-32-16",
@@ -85,6 +91,7 @@ SUPPORTED_BOUNDARY_CONDITIONS = {
     "u_weinan_norm",
     "sin_sum",
     "gaussian",
+    "call_payoff"
 }
 SOLUTIONS = {
     "poisson": {
@@ -103,12 +110,21 @@ SOLUTIONS = {
     "log-fokker-planck-isotropic": {
         "gaussian": log_fokker_planck_isotropic_equation.q_isotropic_gaussian,
     },
+    "black-scholes": {
+        "call_payoff": black_scholes_equation.bs_call_price,
+    },
+    "black-scholes-logS": {
+        "call_payoff": black_scholes_logS_equation.bs_call_price,
+    },
 }
+
 INTERIOR_LOSS_EVALUATORS = {
     "poisson": poisson_equation.evaluate_interior_loss,
     "heat": heat_equation.evaluate_interior_loss,
     "fokker-planck-isotropic": fokker_planck_isotropic_equation.evaluate_interior_loss,
     "log-fokker-planck-isotropic": log_fokker_planck_isotropic_equation.evaluate_interior_loss,  # noqa: B950
+    "black-scholes": black_scholes_equation.evaluate_interior_loss,
+    "black-scholes-logS": black_scholes_logS_equation.evaluate_interior_loss,
 }
 
 
@@ -299,6 +315,8 @@ def set_up_layers(model: str, equation: str, dim_Omega: int) -> List[Module]:
         "heat": dim_Omega + 1,
         "fokker-planck-isotropic": dim_Omega + 1,
         "log-fokker-planck-isotropic": dim_Omega + 1,
+        "black-scholes": dim_Omega + 1,
+        "black-scholes-logS": dim_Omega + 1,
     }[equation]
     if model == "mlp-tanh-64":
         layers = [
@@ -365,6 +383,18 @@ def set_up_layers(model: str, equation: str, dim_Omega: int) -> List[Module]:
 def create_interior_data(
     equation: str, condition: str, dim_Omega: int, num_data: int
 ) -> Tuple[Tensor, Tensor]:
+    
+    # Black-Scholes uses its own price-domain sampler and zero interior targets.
+    if equation == "black-scholes" and condition == "call_payoff":
+        X = black_scholes_equation.interior_points(num_data)
+        y = zeros(num_data, 1)
+        return X, y
+    
+    if equation == "black-scholes-logS" and condition == "call_payoff":
+        X = black_scholes_logS_equation.interior_points(num_data)
+        y = zeros(num_data, 1)
+        return X, y
+    
     """Create random inputs and targets from the PDE's domain.
 
     Args:
@@ -383,6 +413,8 @@ def create_interior_data(
             supported.
     """
     dim = {
+        "black-scholes": dim_Omega + 1,
+        "black-scholes-logS": dim_Omega + 1,
         "poisson": dim_Omega,
         "heat": dim_Omega + 1,
         "fokker-planck-isotropic": dim_Omega + 1,
@@ -429,6 +461,7 @@ def create_interior_data(
         raise NotImplementedError(
             f"Equation {equation} with condition {condition} is not supported."
         )
+    
 
     return X, y
 
@@ -466,6 +499,7 @@ def create_condition_data(
         "sin_product",
         "sin_sum",
     }:
+    
         # boundary condition
         X_dOmega1 = heat_equation.square_boundary_random_time(num_data // 2, dim_Omega)
         # initial value condition
@@ -478,6 +512,19 @@ def create_condition_data(
         X_no_t = 10 * rand(num_data, dim_Omega) - 5
         t = zeros(num_data, 1)
         X_dOmega = cat([t, X_no_t], dim=1)
+    
+    elif equation == "black-scholes" and condition == "call_payoff":
+        # terminal payoff condition + spatial boundary
+        X_terminal = black_scholes_equation.terminal_points(num_data // 2)
+        X_boundary = black_scholes_equation.spatial_boundary_points(num_data // 2)
+        X_dOmega = cat([X_terminal, X_boundary])
+ 
+    elif equation == "black-scholes-logS" and condition == "call_payoff":
+        # tau=0 initial (payoff) condition + spatial (log-price) boundary
+        X_terminal = black_scholes_logS_equation.terminal_points(num_data // 2)
+        X_boundary = black_scholes_logS_equation.spatial_boundary_points(num_data // 2)
+        X_dOmega = cat([X_terminal, X_boundary])
+    
     else:
         raise NotImplementedError(
             f"Equation {equation} and condition {condition} not supported."

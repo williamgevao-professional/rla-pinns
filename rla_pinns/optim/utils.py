@@ -4,12 +4,15 @@ from torch import Tensor, cat, zeros, cat
 from einops import einsum
 from torch.nn import Module
 from rla_pinns import (
+    black_scholes_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
     poisson_equation,
+    black_scholes_equation,
 )
 from rla_pinns.pinn_utils import (
+    evaluate_boundary_loss,
     evaluate_boundary_loss_with_layer_inputs_and_grad_outputs,
 )
 import torch
@@ -39,6 +42,13 @@ EVAL_FNS = {
         "interior": log_fokker_planck_isotropic_equation.evaluate_interior_loss_with_layer_inputs_and_grad_outputs,  # noqa: B950
         "boundary": evaluate_boundary_loss_with_layer_inputs_and_grad_outputs,
     },
+    "black-scholes": {
+        "interior": black_scholes_equation.evaluate_interior_loss,  # noqa: B950
+        "boundary": evaluate_boundary_loss,
+    },
+    "black-scholes-logS": {
+        "interior": black_scholes_logS_equation.evaluate_interior_loss_with_layer_inputs_and_grad_outputs,
+        "boundary": evaluate_boundary_loss_with_layer_inputs_and_grad_outputs},
 }
 
 

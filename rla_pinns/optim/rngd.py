@@ -5,10 +5,12 @@ from argparse import ArgumentParser, Namespace
 from torch.nn import Module
 from torch.optim import Optimizer
 from rla_pinns import (
+    black_scholes_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
     poisson_equation,
+    black_scholes_equation,
 )
 from rla_pinns.optim.utils import (
     evaluate_losses_with_layer_inputs_and_grad_outputs,
@@ -22,7 +24,7 @@ from rla_pinns.optim.rand_utils import (
     sketch_and_project,
     apply_inv_sketch_naive,
 )
-from rla_pinns.pinn_utils import evaluate_boundary_loss
+from rla_pinns.pinn_utils import evaluate_boundary_loss, evaluate_boundary_loss_with_layer_inputs_and_grad_outputs
 from rla_pinns.parse_utils import parse_known_args_and_remove_from_argv
 from rla_pinns.optim.line_search import grid_line_search, parse_grid_line_search_args
 
@@ -110,6 +112,14 @@ class RNGD(Optimizer):
         "log-fokker-planck-isotropic": {
             "interior": log_fokker_planck_isotropic_equation.evaluate_interior_loss,
             "boundary": evaluate_boundary_loss,
+        },
+        "black-scholes": {
+            "interior": black_scholes_equation.evaluate_interior_loss,
+            "boundary": evaluate_boundary_loss,
+        },
+        "black-scholes-logS": {
+            "interior": black_scholes_logS_equation.evaluate_interior_loss,   # ← plain version
+            "boundary": evaluate_boundary_loss,                               # ← plain version
         },
     }
     SUPPORTED_EQUATIONS = list(LOSS_EVALUATORS.keys())
