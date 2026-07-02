@@ -1,0 +1,29 @@
+program: rla_pinns/train.py
+method: grid
+metric:
+  name: l2_error
+  goal: minimize
+command:
+  - ${env}
+  - python
+  - ${program}
+  - "--wandb"
+  - "--wandb_project=deep-hedging-optim"
+  - ${args}
+parameters:
+  optimizer:
+    value: Adam
+  equation:
+    value: black-scholes-logS
+  boundary_condition:
+    value: call_payoff
+  dim_Omega:
+    value: 1
+  model:
+    value: mlp-tanh-64
+  dtype:
+    value: float64
+  num_seconds:
+    value: 300
+  Adam_lr:
+    values: [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03]
