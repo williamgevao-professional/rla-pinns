@@ -1,29 +1,39 @@
-program: rla_pinns/train.py
-method: grid
-metric:
-  name: l2_error
-  goal: minimize
+entity: williamgevao202-concordia-university
+project: deep-hedging-compare
+name: Adam_sweep
+program: ../../train.py
 command:
-  - ${env}
-  - python
-  - ${program}
-  - "--wandb"
-  - "--wandb_project=deep-hedging-optim"
-  - ${args}
+    - ${env}
+    - python
+    - ${program}
+    - "--wandb"
+    - "--optimizer=Adam"
+    - "--equation=black-scholes-logS"
+    - ${args}
+metric:
+    goal: minimize
+    name: l2_error
+method: random
+run_cap: 50
 parameters:
-  optimizer:
-    value: Adam
-  equation:
-    value: black-scholes-logS
-  boundary_condition:
-    value: call_payoff
-  dim_Omega:
-    value: 1
-  model:
-    value: mlp-tanh-64
-  dtype:
-    value: float64
-  num_seconds:
-    value: 300
-  Adam_lr:
-    values: [0.0001, 0.0003, 0.001, 0.003, 0.01, 0.03]
+    batch_frequency:
+        value: 1
+    boundary_condition:
+        value: call_payoff
+    model:
+        value: mlp-tanh-64
+    dtype:
+        value: float64
+    num_seconds:
+        value: 6000
+    dim_Omega:
+        value: 1
+    N_Omega:
+        value: 3_000
+    N_dOmega:
+        value: 500
+    Adam_lr:
+        distribution: log_uniform_values
+        min: 1e-4
+        max: 5e-1
+

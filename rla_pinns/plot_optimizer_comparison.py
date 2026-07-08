@@ -28,7 +28,13 @@ OPT_COLORS = {
     "SGD":         "#ff7f0e",  # orange
     "LBFGS":       "#2ca02c",  # green
     "HessianFree": "#000000",  # black
-    "RNGD":        "#1f77b4",  # blue (the second-order star, like ENGD-W in the paper)
+    "RNGD":        "#1f77b4",  # blue (ENGD-Woodbury)
+}
+
+# wandb logs the optimizer as "RNGD"; show it as "ENGD-Woodbury"
+DISPLAY = {
+    "Adam": "Adam", "SGD": "SGD", "LBFGS": "LBFGS",
+    "HessianFree": "HessianFree", "RNGD": "ENGD-Woodbury",
 }
 
 
@@ -40,6 +46,8 @@ def fetch_runs():
     for run in runs:
         opt = run.config.get("optimizer", None)
         if opt is None:
+            continue
+        if run.summary.get("_runtime", 0) < 5000:   # keep only 6000s runs
             continue
         steps, times, l2, loss = [], [], [], []
         for row in run.scan_history(keys=["step", "time", "l2_error", "loss"]):
@@ -76,9 +84,9 @@ def two_panel(data, metric, ylabel, outfile, title):
         c = OPT_COLORS[opt]
         # sort by x just in case history isn't ordered
         si = np.argsort(d["step"])
-        ax_step.plot(d["step"][si], d[metric][si], color=c, lw=1.6, label=opt)
+        ax_step.plot(d["step"][si], d[metric][si], color=c, lw=1.6, label=DISPLAY.get(opt, opt))
         ti = np.argsort(d["time"])
-        ax_time.plot(d["time"][ti], d[metric][ti], color=c, lw=1.6, label=opt)
+        ax_time.plot(d["time"][ti], d[metric][ti], color=c, lw=1.6, label=DISPLAY.get(opt, opt))
 
     for ax, xlabel in [(ax_step, "Iteration (step)"), (ax_time, "Time [s]")]:
         ax.set_xscale("log")
@@ -107,10 +115,10 @@ def main():
 
     print("\nBuilding figures...")
     two_panel(data, "l2_error", "L2 error",
-              "comparison_l2_error.png",
+              "comparison_l2_error_engd_woodbury.png",
               "Optimizer comparison on Black-Scholes PINN: L2 error")
     two_panel(data, "loss", "loss",
-              "comparison_loss.png",
+              "comparison_loss_engd_woodbury.png",
               "Optimizer comparison on Black-Scholes PINN: loss")
     print("\nDone. Two figures, each with steps panel + time panel.")
 
