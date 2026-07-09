@@ -1,5 +1,5 @@
 entity: williamgevao202-concordia-university
-project: deep-hedging-compare
+project: rla-pinns-rla_pinns
 name: Adam_sweep
 program: rla_pinns/train.py
 command:
@@ -14,7 +14,7 @@ metric:
     goal: minimize
     name: l2_error
 method: random
-run_cap: 50
+run_cap: 20
 parameters:
     batch_frequency:
         value: 1
@@ -25,7 +25,7 @@ parameters:
     dtype:
         value: float64
     num_seconds:
-        value: 6000
+        value: 3000
     dim_Omega:
         value: 1
     N_Omega:
