@@ -128,10 +128,7 @@ def spatial_boundary_points(N: int) -> Tensor:
     return _cat_time_space(tau, x)
 
 
-# ---------------------------------------------------------------------------
-# Wire the STANDARD Fokker-Planck engine with the BS coefficients.
-# These three names are what train.py / EVAL_FNS / LOSS_EVALUATORS import.
-# ---------------------------------------------------------------------------
+
 evaluate_interior_loss = partial(
     fokker_planck_equation.evaluate_interior_loss,
     mu=mu_bs,

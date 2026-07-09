@@ -1,7 +1,7 @@
 entity: williamgevao202-concordia-university
 project: deep-hedging-compare
 name: Adam_sweep
-program: ../../train.py
+program: rla_pinns/train.py
 command:
     - ${env}
     - python

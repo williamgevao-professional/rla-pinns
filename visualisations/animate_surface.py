@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt, matplotlib.animation as animation
 CHECKPOINT_DIR = "checkpoints_rngd_fine"
 GLOB = "black-scholes-logS_1d_call_payoff_mlp-tanh-64_*_step*.pt"
 S_MAX = 3.0                    # <-- x-axis cap (was ~20)
-CURVE_TAU = 0.5               # time slice for the morphing curve
+CURVE_TAU = 0.9               # time slice for the morphing curve
 HEATMAP_TAUS = [1.0, 0.5, 0.0]  # slices for the static heatmaps
 FPS = 6
 DTYPE = torch.float64
