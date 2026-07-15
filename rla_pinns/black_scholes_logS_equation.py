@@ -129,6 +129,46 @@ def spatial_boundary_points(N: int) -> Tensor:
 
 
 
+
+PATH_MU      = float(environ.get("BS_PATH_MU", 0.0))    # drift of the sampled paths
+PATH_STEPS   = int(environ.get("BS_PATH_STEPS", 50))    # timesteps per path
+
+
+def path_interior_points(N: int) -> Tensor:
+  
+    dt_step = MATURITY / PATH_STEPS
+
+    # oversample: rejection kills ~5% of paths (mostly ones starting near the edges)
+    n_paths = int(N / (PATH_STEPS + 1) / 0.90) + 2
+
+    # random starting log-price, one per path
+    x0 = rand(n_paths, 1) * (X_MAX - X_MIN) + X_MIN
+
+    # log-space GBM increments (from Ito: d(lnS) = (mu - 0.5 sigma^2)dt + sigma dW)
+    #   drift scales with dt;  noise scales with SQRT(dt)
+    Z = randn(n_paths, PATH_STEPS)
+    increments = (PATH_MU - 0.5 * SIGMA**2) * dt_step + SIGMA * (dt_step**0.5) * Z
+
+    # running total gives the path. Leading zeros = "no movement yet at t = 0".
+    x = x0 + cat([zeros(n_paths, 1), increments.cumsum(dim=1)], dim=1)
+
+    # reject any path that EVER exits the domain
+    inside = ((x >= X_MIN) & (x <= X_MAX)).all(dim=1)
+    x = x[inside]
+
+    # paths run FORWARD in t; the PINN's coordinate is tau = T - t
+    t = arange(PATH_STEPS + 1, dtype=x.dtype) * dt_step      # [PATH_STEPS+1]
+    tau = (MATURITY - t).unsqueeze(0).expand(x.shape[0], -1)  # [n_kept, PATH_STEPS+1]
+
+    X = cat([tau.reshape(-1, 1), x.reshape(-1, 1)], dim=1)    # [n_kept*(steps+1), 2]
+
+    # trim (or, if rejection was unlucky, top up) to exactly N points
+    if X.shape[0] >= N:
+        return X[randperm(X.shape[0])[:N]]
+    return cat([X, path_interior_points(N - X.shape[0])])
+
+
+
 evaluate_interior_loss = partial(
     fokker_planck_equation.evaluate_interior_loss,
     mu=mu_bs,

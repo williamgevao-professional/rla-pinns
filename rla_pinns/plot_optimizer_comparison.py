@@ -20,6 +20,7 @@ import numpy as np
 
 ENTITY = "williamgevao202-concordia-university"
 PROJECT = "deep-hedging-compare"
+ONLY_IDS = {"rdnhik89", "gny57f0e", "y8cjd2ti", "3d3osbgh", "qu5a92e9"}  # today's 3000s runs
 
 # consistent color + order per optimizer (so both figures match)
 OPT_ORDER = ["Adam", "SGD", "LBFGS", "HessianFree", "RNGD"]
@@ -47,7 +48,7 @@ def fetch_runs():
         opt = run.config.get("optimizer", None)
         if opt is None:
             continue
-        if run.summary.get("_runtime", 0) < 5000:   # keep only 6000s runs
+        if run.id not in ONLY_IDS:                  # keep only today's 5 runs
             continue
         steps, times, l2, loss = [], [], [], []
         for row in run.scan_history(keys=["step", "time", "l2_error", "loss"]):

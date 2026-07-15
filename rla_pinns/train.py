@@ -163,6 +163,15 @@ def parse_general_args(verbose: bool = False) -> Namespace:
         help="Which boundary condition will be used.",
     )
     parser.add_argument(
+        "--interior_sampling",
+        type=str,
+        default="uniform",
+        choices=["uniform", "path"],
+        help="Where interior collocation points come from: 'uniform' = the usual "
+             "random box sampling; 'path' = points visited by simulated GBM "
+             "trajectories.",
+    )
+    parser.add_argument(
         "--batch_frequency",
         type=int,
         default=0,
@@ -381,7 +390,8 @@ def set_up_layers(model: str, equation: str, dim_Omega: int) -> List[Module]:
 
 
 def create_interior_data(
-    equation: str, condition: str, dim_Omega: int, num_data: int
+    equation: str, condition: str, dim_Omega: int, num_data: int,
+    interior_sampling: str = "uniform",
 ) -> Tuple[Tensor, Tensor]:
     
     # Black-Scholes uses its own price-domain sampler and zero interior targets.
@@ -391,7 +401,12 @@ def create_interior_data(
         return X, y
     
     if equation == "black-scholes-logS" and condition == "call_payoff":
-        X = black_scholes_logS_equation.interior_points(num_data)
+        # interior_sampling is threaded in via the partial() in create_data_loader
+        sampler = {
+            "uniform": black_scholes_logS_equation.interior_points,
+            "path": black_scholes_logS_equation.path_interior_points,
+        }[interior_sampling]
+        X = sampler(num_data)
         y = zeros(num_data, 1)
         return X, y
     
@@ -543,6 +558,7 @@ def create_data_loader(
     num_data: int,
     dev: device,
     dt: dtype,
+    interior_sampling: str = "uniform",   # NEW
 ) -> Iterable[Tuple[Tensor, Tensor]]:
     """Create a data loader for one of the losses.
 
@@ -563,7 +579,12 @@ def create_data_loader(
     data_func = {"interior": create_interior_data, "condition": create_condition_data}[
         loss_type
     ]
-    data_func = partial(data_func, equation, condition, dim_Omega, num_data)
+    if loss_type == "interior":
+        data_func = partial(
+            data_func, equation, condition, dim_Omega, num_data, interior_sampling
+        )
+    else:
+        data_func = partial(data_func, equation, condition, dim_Omega, num_data)
     return DataLoader(data_func, dev, dt, frequency)
 
 
@@ -598,8 +619,10 @@ def main():  # noqa: C901
             N_Omega,
             dev,
             dt,
+            args.interior_sampling,      # NEW
         )
     )
+    # eval loader unchanged -- keep it uniform, it is the yardstick
     interior_eval_data_loader = iter(
         create_data_loader(
             0,  # fixed evaluation data
