@@ -24,7 +24,8 @@ so dim_Omega = 1 and full input dim = 2.
 from functools import partial
 from math import sqrt as _sqrt
 
-from torch import Tensor, clamp, full, ones, zeros, cat, rand, log, exp
+from torch import Tensor, clamp, full, ones, zeros, cat, rand, log, exp, rand, randn, cat, zeros, arange, randperm
+
 from os import environ
 
 # IMPORTANT: wrap the STANDARD (linear) engine, NOT log_fokker_planck_equation.
@@ -146,7 +147,7 @@ def path_interior_points(N: int) -> Tensor:
 
     # log-space GBM increments (from Ito: d(lnS) = (mu - 0.5 sigma^2)dt + sigma dW)
     #   drift scales with dt;  noise scales with SQRT(dt)
-    Z = randn(n_paths, PATH_STEPS)
+    Z = rand(n_paths, PATH_STEPS)
     increments = (PATH_MU - 0.5 * SIGMA**2) * dt_step + SIGMA * (dt_step**0.5) * Z
 
     # running total gives the path. Leading zeros = "no movement yet at t = 0".
