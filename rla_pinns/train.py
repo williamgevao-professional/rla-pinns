@@ -647,7 +647,7 @@ def main():  # noqa: C901
         from rla_pinns.black_scholes_logS_equation import SIGMA, MATURITY, X_MIN, X_MAX
         prev_rng = get_rng_state()               # save training RNG
         manual_seed(seed)                        # deterministic exam
-        n_paths = -(-n_eval // (steps + 1))      # ceil -> at least n_eval points
+        n_paths = -(-n_eval // (steps + 1)) * 2   # 2x oversample     # ceil -> at least n_eval points
         dt_step = MATURITY / steps
         xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
         xs[:, 0] = X_MIN + (X_MAX - X_MIN) * rand(n_paths, device=dev, dtype=dt)  # random x0 ~ U(X_MIN, X_MAX)
