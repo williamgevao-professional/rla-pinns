@@ -26,9 +26,14 @@ from torch import (
     dtype,
     float32,
     float64,
+    get_rng_state,
+    linspace,
     manual_seed,
     rand,
+    randn,
     save,
+    set_rng_state,
+    stack,
     zeros,
 )
 from torch.nn import Linear, Module, Sequential, Tanh
@@ -635,6 +640,31 @@ def main():  # noqa: C901
             dt,
         )
     )
+    # canonical PATH eval set -- fixed x0=0, path-mu=0, fixed seed.
+    # Standalone on purpose: does NOT read BS_PATH_MU / random x0, so EVERY run
+    # (uniform and all mu) is graded on the identical path exam.
+    def _make_path_eval(n_eval, steps=50, seed=12345):
+        from rla_pinns.black_scholes_logS_equation import SIGMA, MATURITY, X_MIN, X_MAX
+        prev_rng = get_rng_state()               # save training RNG
+        manual_seed(seed)                        # deterministic exam
+        n_paths = -(-n_eval // (steps + 1))      # ceil -> at least n_eval points
+        dt_step = MATURITY / steps
+        xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
+        for k in range(steps):                   # x0 = 0 for all paths; path-mu = 0
+            z = randn(n_paths, device=dev, dtype=dt)
+            xs[:, k + 1] = xs[:, k] + (0.0 - 0.5 * SIGMA**2) * dt_step \
+                                    + SIGMA * dt_step**0.5 * z
+        inside = ((xs >= X_MIN) & (xs <= X_MAX)).all(dim=1)
+        xs = xs[inside]
+        taus = linspace(0, MATURITY, steps + 1, device=dev, dtype=dt)
+        pts = stack([taus.repeat(xs.shape[0]), xs.flatten()], dim=1)
+        set_rng_state(prev_rng)                  # restore training RNG
+        return pts[:n_eval]                      # trim to exactly n_eval
+    X_path_eval = _make_path_eval(args.N_eval, steps=50)
+    print(f"[path-eval] shape={tuple(X_path_eval.shape)} "
+          f"x-range=[{X_path_eval[:,1].min():.3f}, {X_path_eval[:,1].max():.3f}]",
+          flush=True)
+    
     # for satisfying boundary and (maybe) initial conditions
     condition_train_data_loader = iter(
         create_data_loader(
@@ -828,6 +858,7 @@ def main():  # noqa: C901
             # function to evaluate the known solution
             u = SOLUTIONS[equation][condition]
             l2 = l2_error(model, X_Omega_eval, u)
+            l2_path = l2_error(model, X_path_eval, u)
             print(
                 f"Step: {step:07g},"
                 + f" Loss: {loss},"
@@ -845,6 +876,7 @@ def main():  # noqa: C901
                         "loss_interior": loss_interior,
                         "loss_boundary": loss_boundary,
                         "l2_error": l2,
+                        "l2_error_path": l2_path,
                         "time": elapsed,
                     }
                 )
