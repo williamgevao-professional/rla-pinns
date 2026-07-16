@@ -650,7 +650,8 @@ def main():  # noqa: C901
         n_paths = -(-n_eval // (steps + 1))      # ceil -> at least n_eval points
         dt_step = MATURITY / steps
         xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
-        for k in range(steps):                   # x0 = 0 for all paths; path-mu = 0
+        xs[:, 0] = X_MIN + (X_MAX - X_MIN) * rand(n_paths, device=dev, dtype=dt)  # random x0 ~ U(X_MIN, X_MAX)
+        for k in range(steps):                   
             z = randn(n_paths, device=dev, dtype=dt)
             xs[:, k + 1] = xs[:, k] + (0.0 - 0.5 * SIGMA**2) * dt_step \
                                     + SIGMA * dt_step**0.5 * z
