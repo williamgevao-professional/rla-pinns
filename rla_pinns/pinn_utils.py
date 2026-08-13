@@ -25,6 +25,11 @@ def l2_error(model: Module, X: Tensor, u: Callable[[Tensor], Tensor]) -> Tensor:
     y = (model(X) - u(X)) ** 2
     return y.mean() ** (1 / 2)
 
+def rl2_error(model, X, u):
+    pred = model(X)
+    true = u(X)
+    return (((pred - true)**2).sum() / (true**2).sum()).sqrt().item()
+
 
 def evaluate_boundary_loss(
     model: Union[Module, List[Module]], X: Tensor, y: Tensor

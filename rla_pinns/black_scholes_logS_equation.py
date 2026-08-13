@@ -37,6 +37,7 @@ STRIKE = 1.0                                      # strike K
 MATURITY = float(environ.get("BS_MATURITY", 1.0)) # T (tau runs over [0, T])
 X_MIN = float(environ.get("BS_XMIN", -3.0))       # log-price domain lower bound
 X_MAX = float(environ.get("BS_XMAX", 3.0))        # log-price domain upper bound
+PATH_X0 = float(environ.get("BS_PATH_X0", 0.0))
 
 _MU_CONST = 0.5 * SIGMA**2                         # 0.02
 _SIGMA_FP = SIGMA                                  # 0.2
@@ -143,7 +144,7 @@ def path_interior_points(N: int) -> Tensor:
     n_paths = int(N / (PATH_STEPS + 1) / 0.90) + 2
 
     # random starting log-price, one per path
-    x0 = rand(n_paths, 1) * (X_MAX - X_MIN) + X_MIN
+    x0 = full((n_paths, 1), PATH_X0)
 
     # log-space GBM increments (from Ito: d(lnS) = (mu - 0.5 sigma^2)dt + sigma dW)
     #   drift scales with dt;  noise scales with SQRT(dt)

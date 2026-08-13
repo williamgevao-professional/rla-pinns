@@ -59,7 +59,7 @@ from rla_pinns.parse_utils import (
     check_all_args_parsed,
     parse_known_args_and_remove_from_argv,
 )
-from rla_pinns.pinn_utils import evaluate_boundary_loss, l2_error
+from rla_pinns.pinn_utils import evaluate_boundary_loss, l2_error, rl2_error
 from rla_pinns.poisson_equation import square_boundary
 from rla_pinns.train_utils import DataLoader, KillTrigger, LoggingTrigger
 
@@ -650,7 +650,6 @@ def main():  # noqa: C901
         n_paths = -(-n_eval // (steps + 1)) * 2   # 2x oversample     # ceil -> at least n_eval points
         dt_step = MATURITY / steps
         xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
-        xs[:, 0] = X_MIN + (X_MAX - X_MIN) * rand(n_paths, device=dev, dtype=dt)  # random x0 ~ U(X_MIN, X_MAX)
         for k in range(steps):                   
             z = randn(n_paths, device=dev, dtype=dt)
             xs[:, k + 1] = xs[:, k] + (0.0 - 0.5 * SIGMA**2) * dt_step \
@@ -860,6 +859,8 @@ def main():  # noqa: C901
             u = SOLUTIONS[equation][condition]
             l2 = l2_error(model, X_Omega_eval, u)
             l2_path = l2_error(model, X_path_eval, u)
+            rl2 = rl2_error(model, X_Omega_eval, u)
+            rl2_path = rl2_error(model, X_path_eval, u)
             print(
                 f"Step: {step:07g},"
                 + f" Loss: {loss},"
@@ -878,6 +879,8 @@ def main():  # noqa: C901
                         "loss_boundary": loss_boundary,
                         "l2_error": l2,
                         "l2_error_path": l2_path,
+                        "rl2_error": rl2,
+                        "rl2_error_path": rl2_path,
                         "time": elapsed,
                     }
                 )
