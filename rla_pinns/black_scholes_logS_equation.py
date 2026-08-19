@@ -38,7 +38,7 @@ MATURITY = float(environ.get("BS_MATURITY", 1.0)) # T (tau runs over [0, T])
 X_MIN = float(environ.get("BS_XMIN", -3.0))       # log-price domain lower bound
 X_MAX = float(environ.get("BS_XMAX", 3.0))        # log-price domain upper bound
 PATH_X0 = float(environ.get("BS_PATH_X0", 0.0))
-GAUSS_STD = float(environ.get("BS_GAUSS_STD", 0.4))
+GAUSS_STD = float(environ.get("BS_GAUSS_STD", SIGMA * (MATURITY / 2) ** 0.5))
 
 
 _MU_CONST = 0.5 * SIGMA**2                         # 0.02

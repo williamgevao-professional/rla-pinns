@@ -1,11 +1,12 @@
 import torch
 import matplotlib.pyplot as plt
 
-X_MIN, X_MAX = -3.0, 3.0
 SIGMA, T_MAX = 0.2, 1.0
 STEPS = 50
 N = 3000
 X0 = 0.0
+GAUSS_STD = 0.14
+YLIM = 1.5
 torch.manual_seed(0)
 
 def path_points(n_paths):
@@ -15,27 +16,28 @@ def path_points(n_paths):
     for k in range(STEPS):
         z = torch.randn(n_paths)
         xs[:, k+1] = xs[:, k] + (0.0 - 0.5*SIGMA**2)*dt + SIGMA*(dt**0.5)*z
+    # paths start at tau = T and run to tau = 0
     taus = torch.linspace(T_MAX, 0.0, STEPS + 1)
     return torch.stack([taus.repeat(n_paths), xs.flatten()], dim=1)
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)
 
-uni = torch.stack([torch.rand(N)*T_MAX,
-                   torch.rand(N)*(X_MAX-X_MIN)+X_MIN], dim=1)
-axes[0].scatter(uni[:,0], uni[:,1], s=2, alpha=0.35, color="tab:orange")
-axes[0].set_title("Uniform sampling")
-axes[0].set_xlabel(r"$\tau$"); axes[0].set_ylabel(r"$x$")
+g = torch.stack([torch.rand(N)*T_MAX, GAUSS_STD*torch.randn(N)], dim=1)
+axes[0].scatter(g[:,0], g[:,1], s=2, alpha=0.35, color="tab:orange")
+axes[0].set_title(rf"Gaussian sampling ($s={GAUSS_STD}$)")
+axes[0].set_ylabel(r"$x$")
 
 pts = path_points(500)
 pts = pts[torch.randperm(pts.shape[0])[:N]]
 axes[1].scatter(pts[:,0], pts[:,1], s=2, alpha=0.35, color="tab:blue")
 axes[1].set_title(r"Path sampling ($x_0=0$)")
-axes[1].set_xlabel(r"$\tau$")
 
 for ax in axes:
-    ax.set_xlim(0, T_MAX); ax.set_ylim(X_MIN, X_MAX)
+    ax.set_xlim(T_MAX, 0)          # tau decreasing left to right
+    ax.set_ylim(-YLIM, YLIM)
+    ax.set_xlabel(r"$\tau$  (today $\rightarrow$ expiry)")
     ax.grid(alpha=0.25)
 
 fig.tight_layout()
-fig.savefig("uniform_vs_cone.png", dpi=200)
-print("saved uniform_vs_cone.png")
+fig.savefig("gauss_vs_cone.png", dpi=200)
+print("saved gauss_vs_cone.png")
