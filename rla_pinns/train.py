@@ -171,7 +171,7 @@ def parse_general_args(verbose: bool = False) -> Namespace:
         "--interior_sampling",
         type=str,
         default="uniform",
-        choices=["uniform", "path"],
+        choices=["uniform", "path", "gaussian"],
         help="Where interior collocation points come from: 'uniform' = the usual "
              "random box sampling; 'path' = points visited by simulated GBM "
              "trajectories.",
