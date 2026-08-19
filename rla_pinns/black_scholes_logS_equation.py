@@ -38,6 +38,8 @@ MATURITY = float(environ.get("BS_MATURITY", 1.0)) # T (tau runs over [0, T])
 X_MIN = float(environ.get("BS_XMIN", -3.0))       # log-price domain lower bound
 X_MAX = float(environ.get("BS_XMAX", 3.0))        # log-price domain upper bound
 PATH_X0 = float(environ.get("BS_PATH_X0", 0.0))
+GAUSS_STD = float(environ.get("BS_GAUSS_STD", 0.4))
+
 
 _MU_CONST = 0.5 * SIGMA**2                         # 0.02
 _SIGMA_FP = SIGMA                                  # 0.2
@@ -107,15 +109,17 @@ def interior_points(N: int) -> Tensor:
     return _cat_time_space(tau, x)
 
 
-def terminal_points(N: int) -> Tensor:
-    """Initial condition lives at tau = 0 (was the terminal payoff at t = T)."""
-    # oversample near the strike x = log(K) = 0 where the payoff kink lives
-    n_strike = N // 2
-    n_uniform = N - n_strike
-    x_uniform = X_MIN + (X_MAX - X_MIN) * rand(n_uniform, 1)
-    x_strike = clamp(0.0 + 0.5 * (rand(n_strike, 1) - 0.5), min=X_MIN, max=X_MAX)
-    x = cat([x_uniform, x_strike], dim=0)
-    tau = zeros(N, 1)              # tau = 0 initial condition
+def gaussian_interior_points(N: int) -> Tensor:
+    # Gaussian approximation to the path measure
+    tau = MATURITY * rand(N, 1)
+    x = GAUSS_STD * randn(N, 1)
+    return _cat_time_space(tau, x)
+
+
+def terminal_points(N: int) -> Tensor:  # drawn from path endpoint distribution
+    z = randn(N, 1)
+    x = PATH_X0 + (PATH_MU - 0.5 * SIGMA**2) * MATURITY + SIGMA * (MATURITY**0.5) * z
+    tau = zeros(N, 1)
     return _cat_time_space(tau, x)
 
 
@@ -148,7 +152,7 @@ def path_interior_points(N: int) -> Tensor:
 
     # log-space GBM increments (from Ito: d(lnS) = (mu - 0.5 sigma^2)dt + sigma dW)
     #   drift scales with dt;  noise scales with SQRT(dt)
-    Z = rand(n_paths, PATH_STEPS)
+    Z = randn(n_paths, PATH_STEPS)
     increments = (PATH_MU - 0.5 * SIGMA**2) * dt_step + SIGMA * (dt_step**0.5) * Z
 
     # running total gives the path. Leading zeros = "no movement yet at t = 0".

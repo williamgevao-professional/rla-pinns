@@ -15,7 +15,7 @@ def path_points(n_paths):
     for k in range(STEPS):
         z = torch.randn(n_paths)
         xs[:, k+1] = xs[:, k] + (0.0 - 0.5*SIGMA**2)*dt + SIGMA*(dt**0.5)*z
-    taus = torch.linspace(0, T_MAX, STEPS + 1)
+    taus = torch.linspace(T_MAX, 0.0, STEPS + 1)
     return torch.stack([taus.repeat(n_paths), xs.flatten()], dim=1)
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 4.2), sharey=True)

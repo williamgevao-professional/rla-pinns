@@ -410,6 +410,7 @@ def create_interior_data(
         sampler = {
             "uniform": black_scholes_logS_equation.interior_points,
             "path": black_scholes_logS_equation.path_interior_points,
+            "gaussian": black_scholes_logS_equation.gaussian_interior_points,
         }[interior_sampling]
         X = sampler(num_data)
         y = zeros(num_data, 1)
@@ -540,10 +541,7 @@ def create_condition_data(
         X_dOmega = cat([X_terminal, X_boundary])
  
     elif equation == "black-scholes-logS" and condition == "call_payoff":
-        # tau=0 initial (payoff) condition + spatial (log-price) boundary
-        X_terminal = black_scholes_logS_equation.terminal_points(num_data // 2)
-        X_boundary = black_scholes_logS_equation.spatial_boundary_points(num_data // 2)
-        X_dOmega = cat([X_terminal, X_boundary])
+        X_dOmega = black_scholes_logS_equation.terminal_points(num_data)
     
     else:
         raise NotImplementedError(
