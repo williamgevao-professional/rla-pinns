@@ -642,19 +642,19 @@ def main():  # noqa: C901
     # Standalone on purpose: does NOT read BS_PATH_MU / random x0, so EVERY run
     # (uniform and all mu) is graded on the identical path exam.
     def _make_path_eval(n_eval, steps=50, seed=12345):
-        from rla_pinns.black_scholes_logS_equation import SIGMA, MATURITY, X_MIN, X_MAX
+        from rla_pinns.black_scholes_logS_equation import SIGMA, MATURITY, X_MIN, X_MAX, RATE
         prev_rng = get_rng_state()               # save training RNG
         manual_seed(seed)                        # deterministic exam
-        n_paths = -(-n_eval // (steps + 1)) * 2   # 2x oversample     # ceil -> at least n_eval points
+        n_paths = -(-n_eval // (steps + 1)) * 2  # 2x oversample -> at least n_eval points
         dt_step = MATURITY / steps
         xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
-        for k in range(steps):                   
+        for k in range(steps):
             z = randn(n_paths, device=dev, dtype=dt)
-            xs[:, k + 1] = xs[:, k] + (0.0 - 0.5 * SIGMA**2) * dt_step \
+            xs[:, k + 1] = xs[:, k] + (RATE - 0.5 * SIGMA**2) * dt_step \
                                     + SIGMA * dt_step**0.5 * z
         inside = ((xs >= X_MIN) & (xs <= X_MAX)).all(dim=1)
         xs = xs[inside]
-        taus = linspace(0, MATURITY, steps + 1, device=dev, dtype=dt)
+        taus = linspace(MATURITY, 0.0, steps + 1, device=dev, dtype=dt)
         pts = stack([taus.repeat(xs.shape[0]), xs.flatten()], dim=1)
         set_rng_state(prev_rng)                  # restore training RNG
         return pts[:n_eval]                      # trim to exactly n_eval
@@ -676,6 +676,7 @@ def main():  # noqa: C901
             dt,
         )
     )
+    
 
     # NEURAL NET
     manual_seed(args.model_seed)

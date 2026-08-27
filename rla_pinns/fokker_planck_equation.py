@@ -28,6 +28,7 @@ def evaluate_interior_loss(
     sigma: Callable[[Tensor], Tensor],
     div_mu: Optional[Callable[[Tensor], Tensor]] = None,
     sigma_isotropic: bool = False,
+    potential: Optional[float] = None,
 ) -> Tuple[Tensor, Tensor, Union[List[Dict[str, Tensor]], None]]:
     """Evaluate the interior loss.
 
@@ -127,6 +128,7 @@ def evaluate_interior_loss(
             return model(x) * mu_x_augmented
 
         dp_dt_plus_div_p_times_mu = autograd_input_divergence(p_times_mu, X)
+        p = model(X)
 
         # compute Tr(σ σᵀ ∂²p/∂x²)
         hessian_X = autograd_input_hessian(model, X)  # [batch_size, d + 1, d + 1]
@@ -149,6 +151,8 @@ def evaluate_interior_loss(
 
     # compute residual and loss
     residual = dp_dt_plus_div_p_times_mu - 0.5 * tr_sigma_outer_hessian - y
+    if potential is not None:
+        residual = residual + potential * p
     loss = 0.5 * (residual**2).mean()
 
     return loss, residual, intermediates
@@ -164,6 +168,7 @@ def evaluate_interior_loss_and_kfac(
     ggn_type: str = "type-2",
     kfac_approx: str = "expand",
     sigma_isotropic: bool = False,
+    potential: Optional[float] = None,
 ) -> Tuple[Tensor, Dict[int, Tuple[Tensor, Tensor]]]:
     """Evaluate the interior loss and compute its KFAC approximation.
 
@@ -195,7 +200,8 @@ def evaluate_interior_loss_and_kfac(
     """
     loss, _, layer_inputs, layer_grad_outputs = (
         evaluate_interior_loss_with_layer_inputs_and_grad_outputs(
-            layers, X, y, ggn_type, mu, sigma, div_mu, sigma_isotropic=sigma_isotropic
+            layers, X, y, ggn_type, mu, sigma, div_mu,
+            sigma_isotropic=sigma_isotropic, potential=potential,
         )
     )
     kfacs = compute_kronecker_factors(
@@ -213,6 +219,7 @@ def evaluate_interior_loss_with_layer_inputs_and_grad_outputs(
     sigma: Callable[[Tensor], Tensor],
     div_mu: Optional[Callable[[Tensor], Tensor]],
     sigma_isotropic: bool = False,
+    potential: Optional[float] = None,
 ) -> Tuple[Tensor, Tensor, Dict[int, Tensor], Dict[int, Tensor]]:
     """Compute the interior loss, residual & inputs+output gradients of Linear layers.
 
@@ -253,7 +260,8 @@ def evaluate_interior_loss_with_layer_inputs_and_grad_outputs(
         )
     ]
     loss, residual, intermediates = evaluate_interior_loss(
-        layers, X, y, mu, sigma, div_mu=div_mu, sigma_isotropic=sigma_isotropic
+        layers, X, y, mu, sigma, div_mu=div_mu,
+        sigma_isotropic=sigma_isotropic, potential=potential,
     )
 
     layer_inputs = {}

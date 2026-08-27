@@ -39,9 +39,10 @@ X_MIN = float(environ.get("BS_XMIN", -3.0))       # log-price domain lower bound
 X_MAX = float(environ.get("BS_XMAX", 3.0))        # log-price domain upper bound
 PATH_X0 = float(environ.get("BS_PATH_X0", 0.0))
 GAUSS_STD = float(environ.get("BS_GAUSS_STD", SIGMA * (MATURITY / 2) ** 0.5))
+RATE = float(environ.get("BS_RATE", 0.05))
 
 
-_MU_CONST = 0.5 * SIGMA**2                         # 0.02
+_MU_CONST = 0.5 * SIGMA**2 - RATE                   # 0.5*sigma^2 - r
 _SIGMA_FP = SIGMA                                  # 0.2
 
 
@@ -82,10 +83,10 @@ def bs_call_price(X: Tensor) -> Tensor:
     sqrt_tau = clamp(tau, min=0.0).sqrt()
     at_init = tau <= 0.0
     safe = clamp(sqrt_tau, min=1e-12)
-    d1 = (log(clamp(S, min=1e-12) / STRIKE) + 0.5 * SIGMA**2 * tau) / (SIGMA * safe)
-    d2 = d1 - SIGMA * safe
     N = distributions.Normal(0.0, 1.0)
-    value = S * N.cdf(d1) - STRIKE * N.cdf(d2)
+    d1 = (log(clamp(S, min=1e-12) / STRIKE) + (RATE + 0.5 * SIGMA**2) * tau) / (SIGMA * safe)
+    d2 = d1 - SIGMA * safe
+    value = S * N.cdf(d1) - STRIKE * exp(-RATE * tau) * N.cdf(d2)
     payoff = clamp(S - STRIKE, min=0.0)
     return at_init.to(value.dtype) * payoff + (~at_init).to(value.dtype) * value
 
@@ -118,7 +119,7 @@ def gaussian_interior_points(N: int) -> Tensor:
 
 def terminal_points(N: int) -> Tensor:  # drawn from path endpoint distribution
     z = randn(N, 1)
-    x = PATH_X0 + (PATH_MU - 0.5 * SIGMA**2) * MATURITY + SIGMA * (MATURITY**0.5) * z
+    x = PATH_X0 + (RATE - 0.5*SIGMA**2) * MATURITY + SIGMA * (MATURITY**0.5) * z
     tau = zeros(N, 1)
     return _cat_time_space(tau, x)
 
@@ -136,7 +137,7 @@ def spatial_boundary_points(N: int) -> Tensor:
 
 
 
-PATH_MU      = float(environ.get("BS_PATH_MU", 0.0))    # drift of the sampled paths
+
 PATH_STEPS   = int(environ.get("BS_PATH_STEPS", 50))    # timesteps per path
 
 
@@ -153,7 +154,7 @@ def path_interior_points(N: int) -> Tensor:
     # log-space GBM increments (from Ito: d(lnS) = (mu - 0.5 sigma^2)dt + sigma dW)
     #   drift scales with dt;  noise scales with SQRT(dt)
     Z = randn(n_paths, PATH_STEPS)
-    increments = (PATH_MU - 0.5 * SIGMA**2) * dt_step + SIGMA * (dt_step**0.5) * Z
+    increments = (RATE - 0.5 * SIGMA**2) * dt_step + SIGMA * (dt_step**0.5) * Z
 
     # running total gives the path. Leading zeros = "no movement yet at t = 0".
     x = x0 + cat([zeros(n_paths, 1), increments.cumsum(dim=1)], dim=1)
@@ -181,6 +182,7 @@ evaluate_interior_loss = partial(
     sigma=sigma_bs,
     div_mu=div_mu_bs,
     sigma_isotropic=True,
+    potential=RATE,
 )
 
 evaluate_interior_loss_and_kfac = partial(
@@ -189,6 +191,7 @@ evaluate_interior_loss_and_kfac = partial(
     sigma=sigma_bs,
     div_mu=div_mu_bs,
     sigma_isotropic=True,
+    potential=RATE,
 )
 
 evaluate_interior_loss_with_layer_inputs_and_grad_outputs = partial(
@@ -197,4 +200,5 @@ evaluate_interior_loss_with_layer_inputs_and_grad_outputs = partial(
     sigma=sigma_bs,
     div_mu=div_mu_bs,
     sigma_isotropic=True,
+    potential=RATE,
 )
