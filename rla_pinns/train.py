@@ -15,6 +15,7 @@ from sys import argv
 from time import time
 from typing import Iterable, List, Tuple
 from time import perf_counter
+from torch.profiler import profile, ProfilerActivity
 
 import wandb
 from hessianfree.optimizer import HessianFree
@@ -715,213 +716,215 @@ def main():  # noqa: C901
     kill_trigger = KillTrigger(args.num_steps, args.num_seconds)
     start = time()
 
-    for step in count():
-        # load next batch of data
-        X_Omega, y_Omega = next(interior_train_data_loader)
-        X_dOmega, y_dOmega = next(condition_train_data_loader)
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
+        for step in count():
+            # load next batch of data
+            X_Omega, y_Omega = next(interior_train_data_loader)
+            X_dOmega, y_dOmega = next(condition_train_data_loader)
 
-        optimizer.zero_grad()
+            optimizer.zero_grad()
 
-        if isinstance(optimizer, (KFAC, ENGD, SPRING, RNGD)):
-            loss_interior, loss_boundary = optimizer.step(
-                X_Omega, y_Omega, X_dOmega, y_dOmega
-            )
-        elif isinstance(optimizer, LBFGS):
-            # LBFGS requires a closure
-
-            def closure() -> Tensor:
-                """Evaluate the loss on the current data and model parameters.
-
-                Note:
-                    It is okay to ignore the flake8 warning B023 that this function
-                    will change if we change the loop variables
-                    `X_Omega, y_Omega, X_dOmega, y_dOmega` as we only use the closure
-                    within one iteration of the loop.
-
-                Returns:
-                    The loss.
-                """
-                optimizer.zero_grad()
-                # compute the interior loss' gradient
-                loss_interior, _, _ = eval_interior_loss(
-                    layers,
-                    X_Omega,  # noqa: B023, see note above
-                    y_Omega,  # noqa: B023, see note above
+            if isinstance(optimizer, (KFAC, ENGD, SPRING, RNGD)):
+                loss_interior, loss_boundary = optimizer.step(
+                    X_Omega, y_Omega, X_dOmega, y_dOmega
                 )
-                loss_interior.backward()
+            elif isinstance(optimizer, LBFGS):
+                # LBFGS requires a closure
 
-                # compute the boundary loss' gradient
-                loss_boundary, _, _ = eval_boundary_loss(
-                    layers,
-                    X_dOmega,  # noqa: B023, see note above
-                    y_dOmega,  # noqa: B023, see note above
-                )
-                loss_boundary.backward()
+                def closure() -> Tensor:
+                    """Evaluate the loss on the current data and model parameters.
 
-                # HOTFIX Append the interior and boundary loss as arguments
-                # so we can extract them for logging and plotting
-                loss = loss_interior + loss_boundary
-                loss._loss_interior = loss_interior
-                loss._loss_boundary = loss_boundary
+                    Note:
+                        It is okay to ignore the flake8 warning B023 that this function
+                        will change if we change the loop variables
+                        `X_Omega, y_Omega, X_dOmega, y_dOmega` as we only use the closure
+                        within one iteration of the loop.
 
-                return loss
+                    Returns:
+                        The loss.
+                    """
+                    optimizer.zero_grad()
+                    # compute the interior loss' gradient
+                    loss_interior, _, _ = eval_interior_loss(
+                        layers,
+                        X_Omega,  # noqa: B023, see note above
+                        y_Omega,  # noqa: B023, see note above
+                    )
+                    loss_interior.backward()
 
-            loss_original = optimizer.step(closure=closure)
-            loss_interior = loss_original._loss_interior
-            loss_boundary = loss_original._loss_boundary
+                    # compute the boundary loss' gradient
+                    loss_boundary, _, _ = eval_boundary_loss(
+                        layers,
+                        X_dOmega,  # noqa: B023, see note above
+                        y_dOmega,  # noqa: B023, see note above
+                    )
+                    loss_boundary.backward()
 
-        elif isinstance(optimizer, (HessianFree, HessianFreeCached)):
-            # HessianFree requires a closure that produces the linearization
-            # point and the loss
+                    # HOTFIX Append the interior and boundary loss as arguments
+                    # so we can extract them for logging and plotting
+                    loss = loss_interior + loss_boundary
+                    loss._loss_interior = loss_interior
+                    loss._loss_boundary = loss_boundary
 
-            # store the loss values of the closure because we want to log them
-            # at the current position.
-            loss_storage = []
+                    return loss
 
-            def forward(
-                loss_storage: List[Tuple[Tensor, Tensor]],
-            ) -> Tuple[Tensor, Tensor]:
-                """Compute the linearization point for the GGN and the loss.
+                loss_original = optimizer.step(closure=closure)
+                loss_interior = loss_original._loss_interior
+                loss_boundary = loss_original._loss_boundary
 
-                Args:
-                    loss_storage: A list to append the the interior and boundary loss.
+            elif isinstance(optimizer, (HessianFree, HessianFreeCached)):
+                # HessianFree requires a closure that produces the linearization
+                # point and the loss
 
-                Note:
-                    It is okay to ignore the flake8 warning B023 that this function
-                    will change if we change the loop variables
-                    `X_Omega, y_Omega, X_dOmega, y_dOmega` as we only use the closure
-                    within one iteration of the loop.
+                # store the loss values of the closure because we want to log them
+                # at the current position.
+                loss_storage = []
 
-                Returns:
-                    The linearization point and the loss.
-                """
-                t0 = perf_counter()
-                loss_interior, residual_interior, _ = eval_interior_loss(
-                    layers,
-                    X_Omega,  # noqa: B023, see note above
-                    y_Omega,  # noqa: B023, see note above
-                )
-                loss_boundary, residual_boundary, _ = eval_boundary_loss(
-                    layers,
-                    X_dOmega,  # noqa: B023, see note above
-                    y_dOmega,  # noqa: B023, see note above
-                )
-                
-                # we want to linearize residual w.r.t. the parameters to obtain
-                # the GGN. This established the connection between the loss and
-                # the concatenated boundary and interior residuals.
-                residual = cat(
-                    [
-                        residual_interior / sqrt(residual_interior.numel()),
-                        residual_boundary / sqrt(residual_boundary.numel()),
-                    ]
-                )
-                loss = 0.5 * (residual**2).sum()
+                def forward(
+                    loss_storage: List[Tuple[Tensor, Tensor]],
+                ) -> Tuple[Tensor, Tensor]:
+                    """Compute the linearization point for the GGN and the loss.
 
-                # HOTFIX Append the interior and boundary loss to loss_storage
-                # so we can extract them for logging and plotting
-                loss_storage.append((loss_interior.detach(), loss_boundary.detach()))
-                cuda.synchronize()
-                t1 = perf_counter()
-                print(f"{t1 - t0:.4f}s to compute the loss")
-                return loss, residual
+                    Args:
+                        loss_storage: A list to append the the interior and boundary loss.
 
-            forward = partial(forward, loss_storage=loss_storage)
-            if isinstance(optimizer, HessianFreeCached):
-                optimizer.step(X_Omega, y_Omega, X_dOmega, y_dOmega, forward)
+                    Note:
+                        It is okay to ignore the flake8 warning B023 that this function
+                        will change if we change the loop variables
+                        `X_Omega, y_Omega, X_dOmega, y_dOmega` as we only use the closure
+                        within one iteration of the loop.
+
+                    Returns:
+                        The linearization point and the loss.
+                    """
+                    t0 = perf_counter()
+                    loss_interior, residual_interior, _ = eval_interior_loss(
+                        layers,
+                        X_Omega,  # noqa: B023, see note above
+                        y_Omega,  # noqa: B023, see note above
+                    )
+                    loss_boundary, residual_boundary, _ = eval_boundary_loss(
+                        layers,
+                        X_dOmega,  # noqa: B023, see note above
+                        y_dOmega,  # noqa: B023, see note above
+                    )
+                    
+                    # we want to linearize residual w.r.t. the parameters to obtain
+                    # the GGN. This established the connection between the loss and
+                    # the concatenated boundary and interior residuals.
+                    residual = cat(
+                        [
+                            residual_interior / sqrt(residual_interior.numel()),
+                            residual_boundary / sqrt(residual_boundary.numel()),
+                        ]
+                    )
+                    loss = 0.5 * (residual**2).sum()
+
+                    # HOTFIX Append the interior and boundary loss to loss_storage
+                    # so we can extract them for logging and plotting
+                    loss_storage.append((loss_interior.detach(), loss_boundary.detach()))
+                    cuda.synchronize()
+                    t1 = perf_counter()
+                    print(f"{t1 - t0:.4f}s to compute the loss")
+                    return loss, residual
+
+                forward = partial(forward, loss_storage=loss_storage)
+                if isinstance(optimizer, HessianFreeCached):
+                    optimizer.step(X_Omega, y_Omega, X_dOmega, y_dOmega, forward)
+                else:
+                    t0 = perf_counter()
+                    optimizer.step(forward)
+                    cuda.synchronize()
+                    t1 = perf_counter()
+                    print(f"{t1 - t0:.4f}s to take step.")
+                loss_interior, loss_boundary = loss_storage[0]
+
             else:
-                t0 = perf_counter()
-                optimizer.step(forward)
-                cuda.synchronize()
-                t1 = perf_counter()
-                print(f"{t1 - t0:.4f}s to take step.")
-            loss_interior, loss_boundary = loss_storage[0]
+                # compute the interior loss' gradient
+                loss_interior, _, _ = eval_interior_loss(layers, X_Omega, y_Omega)
+                loss_interior.backward()
+                # compute the boundary loss' gradient
+                loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
+                loss_boundary.backward()
+                optimizer.step()
 
-        else:
-            # compute the interior loss' gradient
-            loss_interior, _, _ = eval_interior_loss(layers, X_Omega, y_Omega)
-            loss_interior.backward()
-            # compute the boundary loss' gradient
-            loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
-            loss_boundary.backward()
-            optimizer.step()
+            now = time()
+            elapsed = now - start
+            loss_boundary, loss_interior = loss_boundary.item(), loss_interior.item()
+            loss = loss_interior + loss_boundary
 
-        now = time()
-        elapsed = now - start
-        loss_boundary, loss_interior = loss_boundary.item(), loss_interior.item()
-        loss = loss_interior + loss_boundary
+            if logging_trigger.should_log(step) or kill_trigger.should_kill(step, elapsed):
+                # load next batch of evaluation data
+                X_Omega_eval, _ = next(interior_eval_data_loader)
+                # function to evaluate the known solution
+                u = SOLUTIONS[equation][condition]
+                l2 = l2_error(model, X_Omega_eval, u)
+                l2_path = l2_error(model, X_path_eval, u)
+                rl2 = rl2_error(model, X_Omega_eval, u)
+                rl2_path = rl2_error(model, X_path_eval, u)
+                print(
+                    f"Step: {step:07g},"
+                    + f" Loss: {loss},"
+                    + f" L2 Error: {l2},"
+                    + f" Interior: {loss_interior},"
+                    + f" Boundary: {loss_boundary},"
+                    + f" Time: {elapsed:.1f}s",
+                    flush=True,
+                )
+                if args.wandb:
+                    wandb.log(
+                        {
+                            "step": step,
+                            "loss": loss,
+                            "loss_interior": loss_interior,
+                            "loss_boundary": loss_boundary,
+                            "l2_error": l2,
+                            "l2_error_path": l2_path,
+                            "rl2_error": rl2,
+                            "rl2_error_path": rl2_path,
+                            "time": elapsed,
+                        }
+                    )
 
-        if logging_trigger.should_log(step) or kill_trigger.should_kill(step, elapsed):
-            # load next batch of evaluation data
-            X_Omega_eval, _ = next(interior_eval_data_loader)
-            # function to evaluate the known solution
-            u = SOLUTIONS[equation][condition]
-            l2 = l2_error(model, X_Omega_eval, u)
-            l2_path = l2_error(model, X_path_eval, u)
-            rl2 = rl2_error(model, X_Omega_eval, u)
-            rl2_path = rl2_error(model, X_path_eval, u)
-            print(
-                f"Step: {step:07g},"
-                + f" Loss: {loss},"
-                + f" L2 Error: {l2},"
-                + f" Interior: {loss_interior},"
-                + f" Boundary: {loss_boundary},"
-                + f" Time: {elapsed:.1f}s",
-                flush=True,
-            )
-            if args.wandb:
-                wandb.log(
-                    {
+            if args.save_checkpoints:
+                should_checkpoint = (
+                    step in args.checkpoint_steps
+                    if args.checkpoint_steps
+                    else logging_trigger.should_log(step)
+                )
+                if should_checkpoint:
+
+                    if isinstance(optimizer, RNGD):
+                        opt_name = (
+                            "ENGDw" if optimizer_args.RNGD_momentum == 0.0 else "SPRING"
+                        )
+                    else:
+                        opt_name = args.optimizer
+
+                    checkpoint_path = path.join(
+                        args.checkpoint_dir,
+                        f"{equation}_{dim_Omega}d_{condition}_{args.model}_{opt_name}_step{step:07g}.pt",
+                    )
+                    print(f"Saving checkpoint to {checkpoint_path}.")
+                    data = {
+                        "model": model.state_dict(),
+                        "optimizer": optimizer.state_dict(),
+                        "X_Omega_eval": next(interior_eval_data_loader)[0],
+                        "X_Omega": X_Omega,
+                        "y_Omega": y_Omega,
+                        "X_dOmega": X_dOmega,
+                        "y_dOmega": y_dOmega,
                         "step": step,
                         "loss": loss,
                         "loss_interior": loss_interior,
                         "loss_boundary": loss_boundary,
-                        "l2_error": l2,
-                        "l2_error_path": l2_path,
-                        "rl2_error": rl2,
-                        "rl2_error_path": rl2_path,
-                        "time": elapsed,
+                        "config": config,
                     }
-                )
+                    save(data, checkpoint_path)
 
-        if args.save_checkpoints:
-            should_checkpoint = (
-                step in args.checkpoint_steps
-                if args.checkpoint_steps
-                else logging_trigger.should_log(step)
-            )
-            if should_checkpoint:
-
-                if isinstance(optimizer, RNGD):
-                    opt_name = (
-                        "ENGDw" if optimizer_args.RNGD_momentum == 0.0 else "SPRING"
-                    )
-                else:
-                    opt_name = args.optimizer
-
-                checkpoint_path = path.join(
-                    args.checkpoint_dir,
-                    f"{equation}_{dim_Omega}d_{condition}_{args.model}_{opt_name}_step{step:07g}.pt",
-                )
-                print(f"Saving checkpoint to {checkpoint_path}.")
-                data = {
-                    "model": model.state_dict(),
-                    "optimizer": optimizer.state_dict(),
-                    "X_Omega_eval": next(interior_eval_data_loader)[0],
-                    "X_Omega": X_Omega,
-                    "y_Omega": y_Omega,
-                    "X_dOmega": X_dOmega,
-                    "y_dOmega": y_dOmega,
-                    "step": step,
-                    "loss": loss,
-                    "loss_interior": loss_interior,
-                    "loss_boundary": loss_boundary,
-                    "config": config,
-                }
-                save(data, checkpoint_path)
-
-        if kill_trigger.should_kill(step, elapsed):
-            return
+            if kill_trigger.should_kill(step, elapsed):
+                break
+    print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=25))
 
 
 if __name__ == "__main__":
