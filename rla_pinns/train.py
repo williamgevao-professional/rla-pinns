@@ -63,6 +63,7 @@ from rla_pinns.parse_utils import (
 from rla_pinns.pinn_utils import evaluate_boundary_loss, l2_error, rl2_error
 from rla_pinns.poisson_equation import square_boundary
 from rla_pinns.train_utils import DataLoader, KillTrigger, LoggingTrigger
+from bsde_loss import sample_paths, bsde_loss_em, bsde_loss_heun
 
 SUPPORTED_OPTIMIZERS = {
     "KFAC",
@@ -176,6 +177,19 @@ def parse_general_args(verbose: bool = False) -> Namespace:
         help="Where interior collocation points come from: 'uniform' = the usual "
              "random box sampling; 'path' = points visited by simulated GBM "
              "trajectories.",
+    )
+    parser.add_argument(
+        "--loss_type",
+        type=str,
+        default="residual",
+        choices=["residual", "bsde_em", "bsde_heun"],
+        help="Which interior objective to minimise.",
+    )
+    parser.add_argument(
+        "--N_bsde_paths",
+        type=int,
+        default=60,
+        help="Number of trajectories per step for BSDE losses.",
     )
     parser.add_argument(
         "--batch_frequency",
@@ -304,6 +318,10 @@ def parse_general_args(verbose: bool = False) -> Namespace:
     # set default value for N_eval if not supplied
     if args.N_eval is None:
         args.N_eval = 10 * args.N_Omega
+        
+    if args.loss_type != "residual":
+        assert args.optimizer in {"Adam", "SGD", "LBFGS"}, \
+            "BSDE losses are only wired into the first-order branch."
 
     if verbose:
         print(f"General arguments for the PINN problem: {args}")
@@ -840,9 +858,17 @@ def main():  # noqa: C901
                 loss_interior, loss_boundary = loss_storage[0]
 
             else:
-                # compute the interior loss' gradient
-                loss_interior, _, _ = eval_interior_loss(layers, X_Omega, y_Omega)
+                if args.loss_type == "residual":
+                    loss_interior, _, _ = eval_interior_loss(layers, X_Omega, y_Omega)
+                else:
+                    X_paths, dW = sample_paths(args.N_bsde_paths, dtype=dt, device=dev)
+                    fn = bsde_loss_em if args.loss_type == "bsde_em" else bsde_loss_heun
+                    loss_interior = fn(model, X_paths, dW)
                 loss_interior.backward()
+                # compute the boundary loss' gradient
+                loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
+                loss_boundary.backward()
+                optimizer.step()
                 # compute the boundary loss' gradient
                 loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
                 loss_boundary.backward()
@@ -866,6 +892,7 @@ def main():  # noqa: C901
                     f"Step: {step:07g},"
                     + f" Loss: {loss},"
                     + f" L2 Error: {l2},"
+                    + f" L2 Path: {l2_path},"
                     + f" Interior: {loss_interior},"
                     + f" Boundary: {loss_boundary},"
                     + f" Time: {elapsed:.1f}s",
