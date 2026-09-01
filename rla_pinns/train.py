@@ -869,10 +869,6 @@ def main():  # noqa: C901
             loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
             loss_boundary.backward()
             optimizer.step()
-            # compute the boundary loss' gradient
-            loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)
-            loss_boundary.backward()
-            optimizer.step()
 
         now = time()
         elapsed = now - start
