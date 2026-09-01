@@ -63,7 +63,7 @@ from rla_pinns.parse_utils import (
 from rla_pinns.pinn_utils import evaluate_boundary_loss, l2_error, rl2_error
 from rla_pinns.poisson_equation import square_boundary
 from rla_pinns.train_utils import DataLoader, KillTrigger, LoggingTrigger
-from bsde_loss import sample_paths, bsde_loss_em, bsde_loss_heun
+from rla_pinns.bsde_loss import sample_paths, bsde_loss_em, bsde_loss_heun
 
 SUPPORTED_OPTIMIZERS = {
     "KFAC",
