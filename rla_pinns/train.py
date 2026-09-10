@@ -63,7 +63,9 @@ from rla_pinns.parse_utils import (
 from rla_pinns.pinn_utils import evaluate_boundary_loss, l2_error, rl2_error
 from rla_pinns.poisson_equation import square_boundary
 from rla_pinns.train_utils import DataLoader, KillTrigger, LoggingTrigger
-from rla_pinns.bsde_loss import sample_paths, bsde_loss_em, bsde_loss_heun
+from rla_pinns.bsde_loss import (
+    sample_paths, bsde_loss_em, bsde_loss_heun, bsde_loss_unem,
+)
 
 SUPPORTED_OPTIMIZERS = {
     "KFAC",
@@ -182,7 +184,7 @@ def parse_general_args(verbose: bool = False) -> Namespace:
         "--loss_type",
         type=str,
         default="residual",
-        choices=["residual", "bsde_em", "bsde_heun"],
+        choices=["residual", "bsde_em", "bsde_heun", "bsde_unem"],
         help="Which interior objective to minimise.",
     )
     parser.add_argument(
@@ -190,6 +192,24 @@ def parse_general_args(verbose: bool = False) -> Namespace:
         type=int,
         default=60,
         help="Number of trajectories per step for BSDE losses.",
+    )
+    parser.add_argument(
+        "--unem_main_stack",
+        type=int,
+        default=5,
+        help="Un-EM-BSDE: noises in the main block (Seo et al. default 5).",
+    )
+    parser.add_argument(
+        "--unem_sub_stack",
+        type=int,
+        default=5,
+        help="Un-EM-BSDE: noises per sub block (Seo et al. default 5).",
+    )
+    parser.add_argument(
+        "--unem_p",
+        type=int,
+        default=2,
+        help="Un-EM-BSDE: number of independent blocks multiplied (default 2).",
     )
     parser.add_argument(
         "--batch_frequency",
@@ -862,8 +882,14 @@ def main():  # noqa: C901
                 loss_interior, _, _ = eval_interior_loss(layers, X_Omega, y_Omega)
             else:
                 X_paths, dW = sample_paths(args.N_bsde_paths, dtype=dt, device=dev)
-                fn = bsde_loss_em if args.loss_type == "bsde_em" else bsde_loss_heun
-                loss_interior = fn(model, X_paths, dW)
+                if args.loss_type == "bsde_unem":
+                    loss_interior = bsde_loss_unem(
+                        model, X_paths, dW,
+                        args.unem_main_stack, args.unem_sub_stack, args.unem_p,
+                    )
+                else:
+                    fn = bsde_loss_em if args.loss_type == "bsde_em" else bsde_loss_heun
+                    loss_interior = fn(model, X_paths, dW)
             loss_interior.backward()
             # compute the boundary loss' gradient
             loss_boundary, _, _ = eval_boundary_loss(layers, X_dOmega, y_dOmega)

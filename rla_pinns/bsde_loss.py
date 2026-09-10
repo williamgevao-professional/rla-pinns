@@ -4,7 +4,7 @@ Not yet wired into training. Run this file directly to test against the
 analytic solution.
 """
 import torch
-from torch import Tensor, randn, zeros, cat, arange, linspace
+from torch import Tensor, randn, zeros, cat, arange, linspace, stack
 from typing import Callable, Tuple
 
 from rla_pinns.black_scholes_logS_equation import (
@@ -96,6 +96,83 @@ def bsde_loss_em(model: Callable, X: Tensor, dW: Tensor) -> Tensor:
     return 0.5 * (residual ** 2).mean()
 
 
+# ---------------------------------------------------------------------------
+# Un-EM-BSDE (Seo et al., "Unbiased and Second-Order-Free Training for
+# High-Dimensional PDEs"). Port of `UnEMBSDE_loss` in their JAX solver.
+#
+# Per path and step, draw K = main_stack + (p-1)*sub_stack independent noises
+# eta_k ~ N(0, dt) (the first one is the path's own increment dW), form the EM
+# one-step error e_k = Y + r*Y*dt + sigma*Z*eta_k - u(tau - dt, x_k) at each
+# shifted point x_k, average e_k within blocks, and multiply the block means.
+# Conditional on x the blocks are independent, so E[main * prod sub] = r(x)^p
+# with r(x) the true local residual of the network: the O(dt^2) variance term
+# that biases the plain EM loss is gone, and no u_xx is needed.
+# ---------------------------------------------------------------------------
+
+def sample_unem_noise(dW: Tensor, K: int) -> Tensor:
+    """Noises for the Un-EM loss: [n_paths, steps, K], eta[..., 0] = dW."""
+    n_paths, steps = dW.shape
+    dt = MATURITY / steps
+    eta = (dt ** 0.5) * randn(n_paths, steps, K, dtype=dW.dtype, device=dW.device)
+    eta[..., 0] = dW
+    return eta
+
+
+def unem_components(model: Callable, X: Tensor, Y: Tensor, Z: Tensor, eta: Tensor,
+                    main_stack: int = 5, sub_stack: int = 5, p: int = 2
+                    ) -> Tuple[Tensor, Tensor]:
+    """Block-averaged one-step errors of the Un-EM loss.
+
+    Args:
+        model: maps [N, 2] points (tau, x) to [N, 1] values.
+        X:     [n_paths, steps+1, 2] path points (tau, x).
+        Y, Z:  [n_paths, steps] network value and d/dx at the step starts.
+        eta:   [n_paths, steps, K] noises, K = main_stack + (p-1)*sub_stack.
+
+    Returns:
+        main: [n_paths, steps] mean of e_k/dt over the main block.
+        sub:  [n_paths, steps] product over the p-1 sub blocks of their means.
+    """
+    n_paths, steps = Y.shape
+    K = main_stack + (p - 1) * sub_stack
+    assert eta.shape == (n_paths, steps, K), (eta.shape, (n_paths, steps, K))
+    dt = MATURITY / steps
+
+    tau_next = X[:, 1:, 0].unsqueeze(-1).expand(-1, -1, K)
+    x_k = X[:, :-1, 1].unsqueeze(-1) + (RATE - 0.5 * SIGMA**2) * dt + SIGMA * eta
+    u_hat = model(stack([tau_next, x_k], dim=-1).reshape(-1, 2)).view(n_paths, steps, K)
+
+    predicted = Y.unsqueeze(-1) * (1.0 + RATE * dt) + SIGMA * Z.unsqueeze(-1) * eta
+    e = (predicted - u_hat) / dt
+
+    main = e[..., :main_stack].mean(dim=-1)
+    if p == 1:  # single block: plain (biased-free but noisy) residual estimate
+        return main, torch.ones_like(main)
+    sub = e[..., main_stack:].reshape(n_paths, steps, p - 1, sub_stack).mean(dim=-1).prod(dim=-1)
+    return main, sub
+
+
+def bsde_loss_unem(model: Callable, X: Tensor, dW: Tensor, main_stack: int = 5,
+                   sub_stack: int = 5, p: int = 2) -> Tensor:
+    """Unbiased EM (Un-EM-BSDE) loss, 0.5 * mean(main * prod sub).
+
+    Scaled by 1/dt^p so that for p = 2 it estimates the same quantity as
+    `bsde_loss_em` minus the EM variance term. Note the sample value can be
+    negative; only its expectation is >= 0.
+    """
+    n_paths, n_pts, _ = X.shape
+    steps = n_pts - 1
+    K = main_stack + (p - 1) * sub_stack
+
+    u, u_x = _eval_network(model, X.reshape(-1, 2))
+    Y = u.view(n_paths, n_pts)[:, :-1]
+    Z = u_x.view(n_paths, n_pts)[:, :-1]
+
+    eta = sample_unem_noise(dW, K)
+    main, sub = unem_components(model, X, Y, Z, eta, main_stack, sub_stack, p)
+    return 0.5 * (main * sub).mean()
+
+
 if __name__ == "__main__":
     from torch.nn import Module
     from rla_pinns.black_scholes_logS_equation import bs_call_price
@@ -106,10 +183,11 @@ if __name__ == "__main__":
 
     torch.manual_seed(0)
 
-    print("EM vs Heun loss of the analytic solution, by step count:")
+    print("EM vs Heun vs Un-EM loss of the analytic solution, by step count:")
     for steps in [10, 25, 50, 100, 200]:
         X, dW = sample_paths(10000, steps=steps)
         em = bsde_loss_em(Analytic(), X, dW)
         heun = bsde_loss_heun(Analytic(), X, dW)
+        unem = bsde_loss_unem(Analytic(), X, dW)
         print(f"  steps={steps:4d}  dt={MATURITY/steps:.4f}  "
-              f"EM={em.item():.6e}  Heun={heun.item():.6e}")
+              f"EM={em.item():.6e}  Heun={heun.item():.6e}  UnEM={unem.item(): .6e}")
