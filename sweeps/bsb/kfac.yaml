@@ -39,17 +39,8 @@ parameters:
     min: 1.0e-08
     max: 0.1
   KFAC_kfac_approx:
-    distribution: categorical
-    values:
-    - expand
-    - reduce
+    value: expand
   KFAC_ggn_type:
-    distribution: categorical
-    values:
-    - type-2
-    - empirical
+    value: type-2
   KFAC_damping_heuristic:
-    distribution: categorical
-    values:
-    - same
-    - trace-norm
+    value: same
