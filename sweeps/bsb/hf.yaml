@@ -1,0 +1,46 @@
+entity: williamgevao202-concordia-university
+project: bsb-100d-sweeps
+name: bsb100_HessianFree
+program: rla_pinns/train.py
+command:
+- ${env}
+- python
+- ${program}
+- --wandb
+- --optimizer=HessianFree
+- --equation=bsb-logS
+- ${args}
+metric:
+  goal: minimize
+  name: rl2_error_path
+method: random
+run_cap: 16
+parameters:
+  boundary_condition:
+    value: bsb_payoff
+  dim_Omega:
+    value: 100
+  model:
+    value: mlp-tanh-64-64-48-48
+  dtype:
+    value: float64
+  num_seconds:
+    value: 3000
+  N_Omega:
+    value: 3000
+  N_dOmega:
+    value: 500
+  interior_sampling:
+    value: path
+  batch_frequency:
+    value: 1
+  HessianFree_damping:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 1.0
+  HessianFree_cg_max_iter:
+    distribution: categorical
+    values:
+    - 50
+    - 100
+    - 250

@@ -9,4 +9,5 @@ module load python/3.11
 source venv/bin/activate
 export PYTHONPATH=$PYTHONPATH:/scratch/wgevao/rla-pinns
 
-wandb agent $SWEEP_ID
+# AGENT_COUNT bounds runs per job so a job never dies mid-run at the time limit
+wandb agent ${AGENT_COUNT:+--count $AGENT_COUNT} $SWEEP_ID

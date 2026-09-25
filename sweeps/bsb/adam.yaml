@@ -1,0 +1,40 @@
+entity: williamgevao202-concordia-university
+project: bsb-100d-sweeps
+name: bsb100_Adam
+program: rla_pinns/train.py
+command:
+- ${env}
+- python
+- ${program}
+- --wandb
+- --optimizer=Adam
+- --equation=bsb-logS
+- ${args}
+metric:
+  goal: minimize
+  name: rl2_error_path
+method: random
+run_cap: 16
+parameters:
+  boundary_condition:
+    value: bsb_payoff
+  dim_Omega:
+    value: 100
+  model:
+    value: mlp-tanh-64-64-48-48
+  dtype:
+    value: float64
+  num_seconds:
+    value: 3000
+  N_Omega:
+    value: 3000
+  N_dOmega:
+    value: 500
+  interior_sampling:
+    value: path
+  batch_frequency:
+    value: 1
+  Adam_lr:
+    distribution: log_uniform_values
+    min: 0.0001
+    max: 0.03
