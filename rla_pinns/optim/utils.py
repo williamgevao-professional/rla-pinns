@@ -5,6 +5,7 @@ from einops import einsum
 from torch.nn import Module
 from rla_pinns import (
     black_scholes_logS_equation,
+    bsb_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
@@ -49,6 +50,10 @@ EVAL_FNS = {
     "black-scholes-logS": {
         "interior": black_scholes_logS_equation.evaluate_interior_loss_with_layer_inputs_and_grad_outputs,
         "boundary": evaluate_boundary_loss_with_layer_inputs_and_grad_outputs},
+    "bsb-logS": {
+        "interior": bsb_logS_equation.evaluate_interior_loss_with_layer_inputs_and_grad_outputs,  # noqa: B950
+        "boundary": evaluate_boundary_loss_with_layer_inputs_and_grad_outputs,
+    },
 }
 
 

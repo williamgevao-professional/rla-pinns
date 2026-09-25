@@ -6,6 +6,7 @@ from torch.nn import Module
 from torch.optim import Optimizer
 from rla_pinns import (
     black_scholes_logS_equation,
+    bsb_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
@@ -120,6 +121,10 @@ class RNGD(Optimizer):
         "black-scholes-logS": {
             "interior": black_scholes_logS_equation.evaluate_interior_loss,   # ← plain version
             "boundary": evaluate_boundary_loss,                               # ← plain version
+        },
+        "bsb-logS": {
+            "interior": bsb_logS_equation.evaluate_interior_loss,
+            "boundary": evaluate_boundary_loss,
         },
     }
     SUPPORTED_EQUATIONS = list(LOSS_EVALUATORS.keys())

@@ -10,6 +10,7 @@ from torch.nn import Module
 from torch.optim import Optimizer
 
 from rla_pinns import (
+    bsb_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
@@ -191,6 +192,10 @@ class KFAC(Optimizer):
             "interior": log_fokker_planck_isotropic_equation.evaluate_interior_loss_and_kfac,  # noqa: B950
             "boundary": evaluate_boundary_loss_and_kfac,
         },
+        "bsb-logS": {
+            "interior": bsb_logS_equation.evaluate_interior_loss_and_kfac,
+            "boundary": evaluate_boundary_loss_and_kfac,
+        },
     }
     LOSS_EVALUATORS = {
         "poisson": {
@@ -209,6 +214,10 @@ class KFAC(Optimizer):
             "interior": log_fokker_planck_isotropic_equation.evaluate_interior_loss,
             "boundary": evaluate_boundary_loss,
         },
+        "bsb-logS": {
+            "interior": bsb_logS_equation.evaluate_interior_loss,
+            "boundary": evaluate_boundary_loss,
+        },
     }
     SUPPORTED_KFAC_APPROXIMATIONS = {"expand", "reduce"}
     SUPPORTED_GGN_TYPES = {"type-2", "empirical", "forward-only"}
@@ -217,6 +226,7 @@ class KFAC(Optimizer):
         "heat",
         "fokker-planck-isotropic",
         "log-fokker-planck-isotropic",
+        "bsb-logS",
     }
     SUPPORTED_DAMPING_HEURISTICS = {"same", "trace-norm"}
 

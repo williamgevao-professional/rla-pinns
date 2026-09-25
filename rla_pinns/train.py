@@ -44,6 +44,7 @@ from torch.optim import LBFGS
 from rla_pinns import (
     black_scholes_equation,
     black_scholes_logS_equation,
+    bsb_logS_equation,
     fokker_planck_isotropic_equation,
     heat_equation,
     log_fokker_planck_isotropic_equation,
@@ -85,6 +86,7 @@ SUPPORTED_EQUATIONS = {
     "log-fokker-planck-isotropic",
     "black-scholes",
     "black-scholes-logS",
+    "bsb-logS",
     }
 SUPPORTED_MODELS = {
     "mlp-tanh-64",
@@ -100,7 +102,8 @@ SUPPORTED_BOUNDARY_CONDITIONS = {
     "u_weinan_norm",
     "sin_sum",
     "gaussian",
-    "call_payoff"
+    "call_payoff",
+    "bsb_payoff",
 }
 SOLUTIONS = {
     "poisson": {
@@ -125,6 +128,9 @@ SOLUTIONS = {
     "black-scholes-logS": {
         "call_payoff": black_scholes_logS_equation.bs_call_price,
     },
+    "bsb-logS": {
+        "bsb_payoff": bsb_logS_equation.bsb_solution,
+    },
 }
 
 INTERIOR_LOSS_EVALUATORS = {
@@ -134,6 +140,7 @@ INTERIOR_LOSS_EVALUATORS = {
     "log-fokker-planck-isotropic": log_fokker_planck_isotropic_equation.evaluate_interior_loss,  # noqa: B950
     "black-scholes": black_scholes_equation.evaluate_interior_loss,
     "black-scholes-logS": black_scholes_logS_equation.evaluate_interior_loss,
+    "bsb-logS": bsb_logS_equation.evaluate_interior_loss,
 }
 
 
@@ -370,6 +377,7 @@ def set_up_layers(model: str, equation: str, dim_Omega: int) -> List[Module]:
         "log-fokker-planck-isotropic": dim_Omega + 1,
         "black-scholes": dim_Omega + 1,
         "black-scholes-logS": dim_Omega + 1,
+        "bsb-logS": dim_Omega + 1,
     }[equation]
     if model == "mlp-tanh-64":
         layers = [
@@ -454,6 +462,16 @@ def create_interior_data(
         X = sampler(num_data)
         y = zeros(num_data, 1)
         return X, y
+
+    if equation == "bsb-logS" and condition == "bsb_payoff":
+        sampler = {
+            "uniform": bsb_logS_equation.interior_points,   # falls back to gaussian
+            "path": bsb_logS_equation.path_interior_points,
+            "gaussian": bsb_logS_equation.gaussian_interior_points,
+        }[interior_sampling]
+        X = sampler(num_data)
+        y = zeros(num_data, 1)
+        return X, y
     
     """Create random inputs and targets from the PDE's domain.
 
@@ -475,6 +493,7 @@ def create_interior_data(
     dim = {
         "black-scholes": dim_Omega + 1,
         "black-scholes-logS": dim_Omega + 1,
+        "bsb-logS": dim_Omega + 1,
         "poisson": dim_Omega,
         "heat": dim_Omega + 1,
         "fokker-planck-isotropic": dim_Omega + 1,
@@ -581,6 +600,9 @@ def create_condition_data(
  
     elif equation == "black-scholes-logS" and condition == "call_payoff":
         X_dOmega = black_scholes_logS_equation.terminal_points(num_data)
+
+    elif equation == "bsb-logS" and condition == "bsb_payoff":
+        X_dOmega = bsb_logS_equation.terminal_points(num_data)
     
     else:
         raise NotImplementedError(
@@ -684,6 +706,13 @@ def main():  # noqa: C901
         from rla_pinns.black_scholes_logS_equation import SIGMA, MATURITY, X_MIN, X_MAX, RATE
         prev_rng = get_rng_state()               # save training RNG
         manual_seed(seed)                        # deterministic exam
+        if equation == "bsb-logS":
+            # d-dimensional log-price GBM test trajectories (paper: 256 paths, 100 steps)
+            steps = bsb_logS_equation.PATH_STEPS
+            n_paths = -(-n_eval // (steps + 1))
+            pts = bsb_logS_equation.sample_log_paths(n_paths, steps, dtype=dt, device=dev)
+            set_rng_state(prev_rng)
+            return pts.reshape(-1, 1 + bsb_logS_equation.DIM)[:n_eval]
         n_paths = -(-n_eval // (steps + 1)) * 2  # 2x oversample -> at least n_eval points
         dt_step = MATURITY / steps
         xs = zeros(n_paths, steps + 1, device=dev, dtype=dt)
@@ -861,7 +890,8 @@ def main():  # noqa: C901
                 # HOTFIX Append the interior and boundary loss to loss_storage
                 # so we can extract them for logging and plotting
                 loss_storage.append((loss_interior.detach(), loss_boundary.detach()))
-                cuda.synchronize()
+                if cuda.is_available():
+                    cuda.synchronize()
                 t1 = perf_counter()
                 print(f"{t1 - t0:.4f}s to compute the loss")
                 return loss, residual
@@ -872,7 +902,8 @@ def main():  # noqa: C901
             else:
                 t0 = perf_counter()
                 optimizer.step(forward)
-                cuda.synchronize()
+                if cuda.is_available():
+                    cuda.synchronize()
                 t1 = perf_counter()
                 print(f"{t1 - t0:.4f}s to take step.")
             loss_interior, loss_boundary = loss_storage[0]
