@@ -13,7 +13,14 @@ import wandb
 
 ENTITY = "williamgevao202-concordia-university"
 PROJECT = "bsb-100d-sweeps"
-SKIP = {"lr"}  # RNGD/KFAC lr is a line-search tuple, not a flag value
+SKIP = {"equation", "verbose"}
+
+
+def _flag_value(v):
+    """CLI-usable value or None (lists are line-search tuples, bools are defaults)."""
+    if isinstance(v, bool) or isinstance(v, (list, dict)) or v is None:
+        return None
+    return repr(v) if isinstance(v, str) and " " in v else v
 
 
 def main() -> None:
@@ -33,6 +40,8 @@ def main() -> None:
             continue
         if opt is None or math.isnan(val) or r.state != "finished":
             continue
+        if c.get("num_seconds") != 3000 or r.name.startswith("hf_diag"):
+            continue
         per_opt.setdefault(opt, []).append((val, r.name, r.id, c))
 
     for opt in sorted(per_opt):
@@ -40,12 +49,13 @@ def main() -> None:
         print(f"\n=== {opt}: {len(runs)} finished runs")
         for val, name, rid, c in runs[: args.top]:
             hp = {k[len(opt) + 1:]: v for k, v in c.items()
-                  if k.startswith(f"{opt}_") and k[len(opt) + 1:] not in SKIP | {"equation"}}
+                  if k.startswith(f"{opt}_") and k[len(opt) + 1:] not in SKIP
+                  and _flag_value(v) is not None}
             print(f"  {args.metric}={val:.3e}  {name} ({rid})  {hp}")
         best = runs[0][3]
-        flags = " ".join(f"--{k} {v}" for k, v in best.items()
-                         if k.startswith(f"{opt}_") and k[len(opt) + 1:] not in SKIP | {"equation"}
-                         and not isinstance(v, (list, dict)))
+        flags = " ".join(f"--{k} {_flag_value(v)}" for k, v in best.items()
+                         if k.startswith(f"{opt}_") and k[len(opt) + 1:] not in SKIP
+                         and _flag_value(v) is not None)
         print(f"  launch_bsb.sh flags: --optimizer {opt} {flags}")
 
 

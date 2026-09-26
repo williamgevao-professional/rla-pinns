@@ -3,14 +3,14 @@
 #
 # Five arms (wandb ids), all: bsb-logS equation, dim_Omega 100, mlp-tanh-64-64-48-48
 # (D = 16209), float64, path sampling, N_Omega 3000, N_dOmega 500, 3000 s.
-#   bsb_sgd    SGD, lr 2.56e-3, momentum 0.9      (best 1-D BS 3000 s sweep)
-#   bsb_adam   Adam, lr 1e-3                       (best 1-D BS path-sampling sweep)
-#   bsb_kfac   KFAC, damping $KFAC_DAMPING, grid line search  (never swept on BS;
-#              1e-4..1e-2 were equally good, 1e-6/1e-8 worse, in a 40 s CPU check)
-#   bsb_hf     Hessian-free, damping 1.38e-3 adaptive, GGN, CG 250, line search
-#              (best 1-D BS 3000 s sweep)
-#   bsb_rngd   ENGD-Woodbury (RNGD), damping 7.98e-7, exact, grid line search
-#              (same as the 1-D FS-PINN baseline)
+# Hyperparameters are the winners of the 3000 s sweeps in wandb project
+# bsb-100d-sweeps (16 random draws each; sweeps/bsb/best_configs.py):
+#   bsb_sgd    SGD, lr 1.79e-2, momentum 0.902                (astral-sweep-4)
+#   bsb_adam   Adam, lr 1.95e-3                               (glorious-sweep-14)
+#   bsb_kfac   KFAC, damping 8.56e-6, grid line search        (driven-sweep-14)
+#   bsb_hf     Hessian-free, damping 0.606, CG 175, adaptive  (charmed-sweep-16;
+#              all 16 HF configs plateau at ~0.076, see sweeps/bsb/hf_diag*.sh)
+#   bsb_rngd   ENGD-Woodbury (RNGD), damping 7.99e-11, exact  (radiant-sweep-6)
 #
 # Usage, on Vulcan from ~/scratch/rla-pinns after `git pull`:
 #   bash launch_bsb.sh                    # all five
@@ -22,7 +22,7 @@ set -euo pipefail
 TAG="${TAG:-}"
 MODEL_SEED="${MODEL_SEED:-1}"
 DATA_SEED="${DATA_SEED:-0}"
-KFAC_DAMPING="${KFAC_DAMPING:-1e-3}"
+KFAC_DAMPING="${KFAC_DAMPING:-8.564804157942645e-06}"
 ARMS="${*:-bsb_sgd bsb_adam bsb_kfac bsb_hf bsb_rngd}"
 
 BASE="--equation bsb-logS --boundary_condition bsb_payoff --dim_Omega 100 \
@@ -34,13 +34,13 @@ BASE="--equation bsb-logS --boundary_condition bsb_payoff --dim_Omega 100 \
 
 for arm in $ARMS; do
     case "$arm" in
-        bsb_sgd)  OPT="--optimizer SGD --SGD_lr 2.5614826751287644e-3 --SGD_momentum 0.9" ;;
-        bsb_adam) OPT="--optimizer Adam --Adam_lr 1e-3" ;;
+        bsb_sgd)  OPT="--optimizer SGD --SGD_lr 0.017867660873741583 --SGD_momentum 0.9020533465633788" ;;
+        bsb_adam) OPT="--optimizer Adam --Adam_lr 0.0019527545948944008" ;;
         bsb_kfac) OPT="--optimizer KFAC --KFAC_damping $KFAC_DAMPING" ;;
         # adaptive damping, line search and CG backtracking are on by default
-        bsb_hf)   OPT="--optimizer HessianFree --HessianFree_damping 1.3804252810122471e-3 \
---HessianFree_curvature_opt ggn --HessianFree_cg_max_iter 250 --HessianFree_cg_decay_x0 0.95" ;;
-        bsb_rngd) OPT="--optimizer RNGD --RNGD_damping 7.98e-7 --RNGD_approximation exact" ;;
+        bsb_hf)   OPT="--optimizer HessianFree --HessianFree_damping 0.6058080027028993 \
+--HessianFree_curvature_opt ggn --HessianFree_cg_max_iter 175 --HessianFree_cg_decay_x0 0.95" ;;
+        bsb_rngd) OPT="--optimizer RNGD --RNGD_damping 7.9948799195362e-11 --RNGD_approximation exact" ;;
         *) echo "unknown arm: $arm" >&2; exit 1 ;;
     esac
     ID="${arm}${TAG}"
